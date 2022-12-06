@@ -3,6 +3,14 @@ import inflect
 inflect = inflect.engine()
 import argparse 
 
+def save_one_shot(outputFile):
+    oneshot_prompt = {}
+    description = 'The window is covered by the drapes, to the left of the lamp, headboard and wall, and to the right of the mirror. The comforter is on the bed, to the left of the clock and table, and to the right of the chair, desk and binder. The black purse is to the right of the floor. The wood headboard is to the right of the window, nightstand and lamp, and to the left of the clock. The small, white, and unlit lamp is on the nightstand, to the left of the headboard, and to the right of the window. The wood table is to the right of the bed and comforter. The nightstand is to the right of the desk and chair, and to the left of the headboard. The desk is to the left of the bed, nightstand and comforter, near the trash can, and behind the chair. The black chair is to the left of the bed, comforter and nightstand, in front of the desk, and to the right of the trash can. The mirror is to the left of the window. The brown chair is to the right of the floor. The white bags are to the right of the floor. The small, black trash can is next to the desk, and to the left of the chair. The lit lamp is to the left of the binder and window, and on the desk. The binder is to the left of the comforter and bed, on the desk, and to the right of the lamp. The brown wall is to the right of the drapes and window. The digital clock is to the right of the comforter, headboard and bed. The brown, striped drapes are to the left of the wall, and covering the window. The blue floor is to the left of the bags, purse and chair. The bed is to the right of the desk, chair and binder, and to the left of the clock and table. Given that the chair is to the left of the bed, summarize succinctly: The bed is on the right side of the room, the chair is to the left side of the bed, the table is in front of the chair, the trash can is to the left side of the table, the lamp is on the nightstand, the binder is on the table, and the digital clock is to the right of the bed on the nightstand. '
+    oneshot_prompt['categoryRelS'] = description
+    with open(outputFile, 'w') as wf:
+        wf.write(json.dumps(oneshot_prompt))
+
+
 
 def get_dataset_sizes():
     train_full = './full-gqa-transformed/train_balanced_image_prompt_final.json'
@@ -21,6 +29,70 @@ def get_dataset_sizes():
     with open(val_filtered) as f:
         val_filtered_data = json.load(f)
         print("Number of unique images in val_filtered: ", len(val_filtered_data))
+
+def get_question_type_distribution_captions(jsonFile):
+    '''
+        Get counts of each question type in the specified jsonFile.
+        Return dictionary of these counts. 
+
+        jsonFile expected to have entries with a 'type' attribute
+        indicating the gqa question type. 
+
+        Meant to run on the "captioned" .json files. 
+    '''
+    question_types = {}
+    with open(jsonFile) as f:
+        data = json.load(f) 
+    for image_id in data:
+        if data[image_id]['type'] not in question_types: 
+            question_types[data[image_id]['type']] = 1 
+        else:
+            question_types[data[image_id]['type']] += 1
+    
+    print(f"FILE NAME {jsonFile}")
+    print(question_types)
+    return question_types
+
+def get_question_type_distribution_gqa(jsonFile):
+    '''
+        Get counts of each question type in the specified jsonFile.
+        Return dictionary of these counts. 
+
+        jsonFile expected to have entries with a 'type' attribute
+        indicating the gqa question type. 
+
+        Meant to run on the "captioned" .json files. 
+    '''
+    i = 0 
+    question_types = {}
+    question_examples = {}
+    with open(jsonFile) as f:
+        data = json.load(f) 
+    for image_id in data:
+      
+        prompts = data[image_id]
+        for example in prompts: 
+            if example['type'] not in question_types: 
+                question_types[example['type']] = 1 
+            else:
+                question_types[example['type']] += 1
+
+            # Get some examples
+            if example['type'] in question_examples:
+                if len(question_examples[example['type']]) < 2:
+                    question_examples[example['type']].append(example)
+            elif example['type'] not in question_examples:
+                question_examples[example['type']] = [example]
+            
+    # Output question examples to json file
+    outputFile = 'gqa_question_example_prompts.json'
+    with open(outputFile, 'w') as wf:
+        wf.write(json.dumps(question_examples))
+
+    print(f"FILE NAME {jsonFile}")
+    print(question_types)
+    return question_types
+
 
 
 def get_transformed_gqa(sceneGraphsFile, questionsFile, outputFile):
@@ -54,7 +126,7 @@ def build_prompts(questions, scene_graphs):
     num_captions, num_multi_object = 0, 0
     for key in questions.keys(): # iterate through questions 
         if 'types' in questions[key] and 'detailed' in questions[key]['types']:
-            if questions[key]['types']['detailed'] in detailed_filter:
+            if questions[key]['types']['detailed'] not in {}: #detailed_filter:
                 image_id = questions[key]['imageId']
                 if image_id in scene_graphs:
                     if len(questions[key]['annotations']['question']) == 2: # 2 objects
@@ -67,14 +139,15 @@ def build_prompts(questions, scene_graphs):
                             # print("NEW CAPTION, 2 objects")
                             num_captions += 1
 
-                            final_prompt = final_image_description + '\n ' + prompt_str
+                            final_prompt = final_image_description + prompt_str #final_image_description + '\n ' + prompt_str
                             if image_id not in image_prompt:
                                 image_prompt[image_id] = [{'prompt': final_prompt, 
                                                            'question_id':key,
                                                            'question': questions[key]['question'], 
                                                            'fullAnswer': questions[key]['fullAnswer'], 
                                                            'type': questions[key]['types']['detailed'], 
-                                                           '>2Objects': False}]
+                                                           '>2Objects': False, 
+                                                           'num_objects': 2}]
 
                             else:
                                 image_prompt[image_id].append({'prompt': final_prompt, 
@@ -82,7 +155,8 @@ def build_prompts(questions, scene_graphs):
                                                                'question': questions[key]['question'], 
                                                                'fullAnswer': questions[key]['fullAnswer'], 
                                                                'type': questions[key]['types']['detailed'], 
-                                                               '>2Objects': False})
+                                                               '>2Objects': False,
+                                                               'num_objects':2})
 
                     elif len(questions[key]['annotations']['question']) == 1: # also allow for 1 object
                         obj1 = list(questions[key]['annotations']['question'].values())[0]
@@ -94,21 +168,23 @@ def build_prompts(questions, scene_graphs):
                             if len(prompt_str) > 0:
                                 num_captions += 1
 
-                                final_prompt = final_image_description + '\n ' + prompt_str
+                                final_prompt = final_image_description + prompt_str #final_image_description + '\n ' + prompt_str
                                 if image_id not in image_prompt:
                                     image_prompt[image_id] = [{'prompt': final_prompt,
                                                                'question_id':key,
                                                                'question': questions[key]['question'], 
                                                                'fullAnswer': questions[key]['fullAnswer'], 
                                                                'type': questions[key]['types']['detailed'], 
-                                                               '>2Objects': False}]
+                                                               '>2Objects': False,
+                                                               'num_objects':1}]
                                 else:
                                     image_prompt[image_id].append({'prompt': final_prompt, 
                                                                    'question_id': key,
                                                                    'question': questions[key]['question'], 
                                                                    'fullAnswer': questions[key]['fullAnswer'], 
                                                                    'type': questions[key]['types']['detailed'], 
-                                                                   '>2Objects': False})
+                                                                   '>2Objects': False,
+                                                                   'num_objects':1})
 
                     else: # Allow for > 2 objects?
                         num_multi_object += 1
@@ -118,30 +194,32 @@ def build_prompts(questions, scene_graphs):
                         relevant_objects = []
                         for obj in objects:
                             if obj in obj_description: 
-                                relevant_objects.append(obj_description[obj].lower())
+                                relevant_objects.append(obj_description[obj].lower()[:-1])
 
-                        if len(relevant_objects) > 0:
-                            prompt_str = 'Given that ' + ', '.join(relevant_objects[:-1])
-                            prompt_str = prompt_str + ' and ' + relevant_objects[-1][:-1] + ', summarize succinctly:'
+                        if len(relevant_objects) > 0: 
+                            prompt_str = ' Given that ' + ', '.join(relevant_objects[:-1]) # weird period inclusion 
+                            prompt_str = prompt_str + ' and ' + relevant_objects[-1] + ', summarize succinctly:'
 
                         if len(prompt_str) > 0:
                             num_captions += 1
 
-                            final_prompt = final_image_description + '\n ' + prompt_str
+                            final_prompt = final_image_description + prompt_str #'\n ' + prompt_str
                             if image_id not in image_prompt:
                                 image_prompt[image_id] = [{'prompt': final_prompt, 
                                                            'question_id':key, 
                                                            'question': questions[key]['question'], 
                                                            'fullAnswer':questions[key]['fullAnswer'],  
                                                            'type':questions[key]['types']['detailed'], 
-                                                           '>2Objects': False}]
+                                                           '>2Objects': True, 
+                                                           'num_objects': len(relevant_objects)}]
                             else:
                                 image_prompt[image_id].append({'prompt': final_prompt, 
                                                                'question_id':key,
                                                                'question': questions[key]['question'], 
                                                                'fullAnswer':questions[key]['fullAnswer'], 
                                                                'type':questions[key]['types']['detailed'], 
-                                                               '>2Objects': False})
+                                                               '>2Objects': True,
+                                                               'num_objects': len(relevant_objects)})
                             
 
                         # Track number of captions thus far
@@ -173,9 +251,10 @@ def get_specific_relation_string(object_relations, object_names, target_obj_id):
             target_str = target_str + relation_name + ' the '
 
             if len(object_relations[relation_name]) > 1:
-                target_str = target_str + ', '.join(object_relations[relation_name][:-1])
-                target_str = target_str + ' and ' + object_relations[relation_name][-1]
-                target_str = target_str + ''
+                # target_str = target_str + ', '.join(object_relations[relation_name][:-1])
+                # target_str = target_str + ' and ' + object_relations[relation_name][-1]
+                # target_str = target_str + ''
+                target_str = target_str + " " + object_names[target_obj_id]
 
             else: 
                 target_str = target_str + object_relations[relation_name][0]
@@ -280,7 +359,10 @@ def get_object_descriptions(objects, obj1, obj2):
         temp = 'The ' 
         if obj_id in object_attributes:
             temp += object_attributes[obj_id] 
-        temp = temp + ' ' +  object_name[obj_id]
+        if temp == 'The ':
+            temp = temp + object_name[obj_id]
+        elif temp != 'The ': # attribute added 
+            temp = temp + ' ' +  object_name[obj_id]
         if inflect.singular_noun(object_name[obj_id]) == False: # check for plural
             temp += ' is '
         else: 
@@ -295,12 +377,12 @@ def get_object_descriptions(objects, obj1, obj2):
             if obj1 == obj_id:
                 prompt_relation_str = get_specific_relation_string(object_relations[obj_id], object_name, obj2)
                 # leaving out period in prompt_relation_str
-                prompt_relation_str = 'Given that ' + temp.lower() + prompt_relation_str[:-1] + ', summarize succinctly:'
+                prompt_relation_str = ' Given that ' + temp.lower() + prompt_relation_str[:-1] + ', summarize succinctly:'
                 
             elif obj2 == obj_id:
                 prompt_relation_str = get_specific_relation_string(object_relations[obj_id], object_name, obj1)
                 # leaving out period in prompt_relation_str
-                prompt_relation_str = 'Given that ' + temp.lower() + prompt_relation_str[:-1] + ', summarize succinctly:'
+                prompt_relation_str = ' Given that ' + temp.lower() + prompt_relation_str[:-1] + ', summarize succinctly:'
 
          
         if len(relation_str) == 0:
@@ -324,10 +406,19 @@ if __name__ == "__main__":
     parser.add_argument('--questionsFile', type=str, required=False, default='questions1.2/train_balanced_questions.json', 
                         help='.json file containing GQA questions.')
     
-    parser.add_argument('--outputFile', type=str, required=False, default='GQA_transformed_train.json', 
+    parser.add_argument('--outputFile', type=str, required=False, default='GQA_transformed_train_new.json', 
                         help='name of output .json file with transformed gqa data.')
 
+    parser.add_argument('--captionedDataFile', type=str, required=False, default='gqa_train_balanced_captioned.json', 
+                        help='name of jsonfile for which you want quesiton type counts.')
+
+    parser.add_argument('--dataFile', type=str, required=False, default='GQA_transformed_train_fixed.json', 
+                        help='name of jsonfile for which you want quesiton type counts.')
+
+
     args = parser.parse_args()
-    
+    #save_one_shot(outputFile='oneshot_gpt_prompt.json')
     get_transformed_gqa(args.sceneGraphsFile, args.questionsFile, args.outputFile)
     #get_dataset_sizes()
+    #get_question_type_distribution_captions(args.captionedDataFile)
+    #get_question_type_distribution_gqa(args.dataFile)
