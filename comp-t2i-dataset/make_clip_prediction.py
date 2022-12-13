@@ -2,14 +2,15 @@ import os
 import pickle
 import csv
 import torch
+import numpy as np 
 
-from datasets import WinogroundDataset, CCUBDataset, CFlowersDataset
+from datasets_t2i import WinogroundDataset, CCUBDataset, CFlowersDataset
 from models.clip_r_precision import CLIPRPrecision
 from clip import clip
 from tqdm import tqdm
 
 from PIL import Image
-
+# Assumes you've run prep_eval_data with the relevant data 
 
 if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -33,12 +34,17 @@ if __name__ == "__main__":
                         help="path to output (this script outputs a pickle file")
     parser.add_argument("--csv_out", default="clip_r_precision_results.csv", type=str,
                         help="path to output (this script outputs a CSV file")
+    parser.add_argument("--clipr_scores_csv", default="all_clipR_winoground_glidelaion_noFT.csv", type=str,
+                        help="path to output (this script outputs a CSV file")
 
     args = parser.parse_args()
 
     # separate result files for each split
     with open(args.pred_path, "rb") as f:
         result = pickle.load(f)
+
+    # print("RESULT: ", result)
+    print("LENGHT OF RESULT INITIALLY: ", len(result))
 
     torch.cuda.set_device(args.gpu)
     torch.backends.cudnn.benchmark = True
@@ -58,7 +64,9 @@ if __name__ == "__main__":
 
     # dataset creation
     # data_dir = "./data"
-    data_dir = "/home/jasonlin/repos/datasets/t2i_benchmark"
+    #data_dir = "/home/jasonlin/repos/datasets/t2i_benchmark"
+    data_dir = 'someshit'
+    # data_dir should contain data.pkl and split.pkl 
     if args.dataset == "C-CUB":
         images_txt_path = os.path.join(data_dir, "C-CUB", "images.txt")
         bbox_txt_path = os.path.join(data_dir, "C-CUB", "bounding_boxes.txt")
@@ -117,7 +125,8 @@ if __name__ == "__main__":
             continue
         mismatched_captions = dataset.get_mismatched_caption(img_id).cuda()
         all_texts = torch.cat([text_conditioned, mismatched_captions], 0)
-
+        print("SHAPE OF all_texts: ", all_texts.shape)
+        R_limit = int(0.50 * len(all_texts))
         with torch.no_grad():
             image_features, text_features = model(image, all_texts)
 
@@ -126,20 +135,34 @@ if __name__ == "__main__":
 
             logit_scale = model.logit_scale.exp()
             logits_per_image = logit_scale * image_features @ text_features.t()
-
-            clip_prediction = torch.argsort(logits_per_image, dim=1, descending=True)[0, 0].item()
+            
+            #clip_prediction = torch.argsort(logits_per_image, dim=1, descending=True)[0, 0].item()
+            clip_prediction = torch.argsort(logits_per_image, dim=1, descending=True)[:, :R_limit] #.item()
+            print("CLIP PREDICTION SHAPE: ", clip_prediction.shape)
+            print(clip_prediction)
 
         new_entry = (img_id, cap_id, gen_img_path, clip_prediction)
         clip_result.append(new_entry)
 
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     with open(args.out_path, 'wb') as f:
         pickle.dump(clip_result, f)
     
-    with open("/home/jasonlin/repos/datasets/t2i_benchmark/winoground/shape/data.pkl", "rb") as wino_df_file:
-        ex_data = pickle.load(wino_df_file)
-        with open(args.csv_out, 'w', newline='') as csvfile:
-            csv_writer = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
-            for (img_id, cap_id, gen_img_path, r_precision_prediction) in clip_result:
-                csv_writer.writerow([img_id, ex_data[img_id][0]["text"], r_precision_prediction])
-        # '/home/jasonlin/repos/datasets/t2i_benchmark/winoground/wino_gt_clipr.csv'
+    # Compute average clip-R score 
+    # nums = [num for (path, x, f, num) in clip_result]
+    # print("AVERAGE CLIP-R SCORE: ", np.mean(nums))
+
+    # with open("/home/mayashar/Desktop/diffusion-visual-reasoners/comp-t2i-dataset/eval_data/data.pkl", "rb") as wino_df_file:
+    #     ex_data = pickle.load(wino_df_file)
+    #     with open(args.csv_out, 'w', newline='') as csvfile:
+    #         csv_writer = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
+    #         for (img_id, cap_id, gen_img_path, r_precision_prediction) in clip_result:
+    #             csv_writer.writerow([img_id, ex_data[img_id][0]["text"], r_precision_prediction])
+    #     # '/home/jasonlin/repos/datasets/t2i_benchmark/winoground/wino_gt_clipr.csv'
+
+    # print("Output scores file: ", args.clipr_scores_csv)
+
+    # with open(args.clipr_scores_csv, 'w', newline='') as csvfile:
+    #         csv_writer = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
+    #         for (img_id, cap_id, gen_img_path, r_precision_prediction) in clip_result:
+    #             csv_writer.writerow([img_id, r_precision_prediction])

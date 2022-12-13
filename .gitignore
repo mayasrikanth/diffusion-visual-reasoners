@@ -1,0 +1,17 @@
+# Ignore pkl file 
+*.pkl 
+
+# Ignore ckpts 
+*.ckpt
+
+# Ignore data .csvs 
+*.csv 
+
+# Ignore prediction files 
+./comp-t2i-dataset/eval_data/
+
+# Ignore wandb 
+./comp-t2i-dataset/wandb/
+
+# Ignore winoground
+./comp-t2i-dataset/winogrand/

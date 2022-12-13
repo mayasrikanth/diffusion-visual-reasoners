@@ -18,11 +18,14 @@ class BaseDataset(data.Dataset):
         self.comp_type = comp_type
         self.split = split
 
-        anno_data_path = os.path.join(data_dir, dataset_name, comp_type, "data.pkl")
+        anno_data_path = '/home/mayashar/Desktop/diffusion-visual-reasoners/comp-t2i-dataset/eval_data/data.pkl' 
+        #anno_data_path = '/home/mayashar/Desktop/diffusion-visual-reasoners/comp-t2i-dataset/eval_data/glide_laion_noFT_data.pkl' 
+        #os.path.join(data_dir, dataset_name, comp_type, "data.pkl")
         with open(anno_data_path, "rb") as f:
             self.anno_data = pickle.load(f)
 
-        split_path = os.path.join(data_dir, dataset_name, comp_type, "split.pkl")
+        split_path = '/home/mayashar/Desktop/diffusion-visual-reasoners/comp-t2i-dataset/eval_data/split.pkl' #os.path.join(data_dir, dataset_name, comp_type, "split.pkl")
+        #split_path = '/home/mayashar/Desktop/diffusion-visual-reasoners/comp-t2i-dataset/eval_data/glide_laion_noFT_split.pkl' 
         with open(split_path, "rb") as f:
             self.split_data = pickle.load(f)
 
@@ -64,8 +67,8 @@ class BaseDataset(data.Dataset):
         class_id = self.image_id_to_class_id[image_id]
         mismatch_captions = []
         num_imgs = len(self.image_ids)
-
-        while len(mismatch_captions) < 99:
+    
+        while len(mismatch_captions) < num_imgs-1: # Tailored to number of images rather than 100..
             sampled_idx = random.randint(0, num_imgs-1)
             sampled_image_id = self.image_ids[sampled_idx]
             sampled_class_id = self.image_id_to_class_id[sampled_image_id]
